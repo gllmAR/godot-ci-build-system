@@ -20,7 +20,7 @@ build_system_path = Path(__file__).parent
 sys.path.insert(0, str(build_system_path))
 
 # Core imports - always needed
-from project_config import BuildSystemConfig, setup_build_system
+from project_config import BuildSystemConfig, load_config
 from tools.progress_reporter import ProgressReporter
 
 # Lazy imports - loaded only when needed
@@ -220,7 +220,7 @@ def main():
         if default_config_path.exists():
             config = BuildSystemConfig.from_json_file(default_config_path)
         else:
-            config = setup_build_system(project_root)
+            config = load_config()
     
     # Override configuration with command line arguments
     if args.projects_dir:
@@ -280,8 +280,13 @@ def main():
             progress.info("📦 Preparing deployment artifact...")
             artifact_manager = _lazy_import('artifact_manager')(progress)
             
-            projects_dir = project_root / config.structure.projects_dir
+            # Use safe fallback for projects_dir and cache_dir
+            projects_dir_val = config.structure.projects_dir or "."
+            cache_dir_val = config.structure.cache_dir or "."
+            
+            projects_dir = project_root / (config.structure.projects_dir or ".")
             output_dir = args.artifact_output or project_root / "deployment_artifact"
+            cache_dir = project_root / (config.structure.cache_dir or ".")
             
             artifact_dir = artifact_manager.prepare_documentation_artifact(
                 project_root, projects_dir, output_dir
@@ -311,13 +316,15 @@ def main():
             
             # Clean cache directory
             import shutil
-            cache_dir = project_root / config.structure.cache_dir
+            cache_dir_val = config.structure.cache_dir or "."
+            cache_dir = project_root / cache_dir_val
             if cache_dir.exists():
                 shutil.rmtree(cache_dir)
                 cache_dir.mkdir(parents=True, exist_ok=True)
             
             # Clean project artifacts
-            projects_dir = project_root / config.structure.projects_dir
+            projects_dir_val = config.structure.projects_dir or "."
+            projects_dir = project_root / projects_dir_val
             if projects_dir.exists():
                 artifact_manager = _lazy_import('artifact_manager')(progress)
                 cleaned_count = artifact_manager.clean_build_artifacts(projects_dir)
@@ -356,7 +363,7 @@ def main():
         # Create build environment
         env = _lazy_import('modern_build_env')(
             godot_binary=godot_binary,
-            projects_dir=project_root / config.structure.projects_dir,
+            projects_dir=project_root / (config.structure.projects_dir or "."),
             max_parallel_jobs=config.max_parallel_jobs,
             show_progress=args.progress,
             enable_caching=config.enable_caching,
@@ -373,7 +380,7 @@ def main():
         if args.preview:
             progress.info("📋 Build Plan Preview:")
             # Memory-efficient preview - don't load all files at once
-            projects_dir = project_root / config.structure.projects_dir
+            projects_dir = project_root / (config.structure.projects_dir or ".")
             
             # Use generator for memory efficiency
             def project_generator():
@@ -416,7 +423,7 @@ def main():
                     return 1
                 
                 # Find all Godot projects
-                projects_dir = project_root / config.structure.projects_dir
+                projects_dir = project_root / (config.structure.projects_dir or ".")
                 project_files = list(projects_dir.rglob("project.godot"))
                 
                 if not project_files:
@@ -503,7 +510,7 @@ def main():
                 else:
                     # Use the sidebar generator tool
                     generate_sidebar = _lazy_import('sidebar_generator')
-                    projects_dir = project_root / config.structure.projects_dir
+                    projects_dir = project_root / (config.structure.projects_dir or ".")
                     sidebar_content, errors = generate_sidebar(
                         projects_dir, config, validate=True, verbose=args.verbose
                     )
@@ -528,7 +535,7 @@ def main():
                 else:
                     # Use the embed injector tool
                     inject_embeds = _lazy_import('embed_injector')
-                    projects_dir = project_root / config.structure.projects_dir
+                    projects_dir = project_root / (config.structure.projects_dir or ".")
                     stats, errors = inject_embeds(
                         projects_dir, dry_run=False, verbose=args.verbose
                     )
@@ -549,7 +556,7 @@ def main():
         if not config.dry_run_mode:
             progress.info("🔍 Verifying build results...")
             artifact_manager = _lazy_import('artifact_manager')(progress)
-            projects_dir = project_root / config.structure.projects_dir
+            projects_dir = project_root / (config.structure.projects_dir or ".")
             verification = artifact_manager.verify_build_results(projects_dir)
             
             if verification['success_rate'] == 100:
