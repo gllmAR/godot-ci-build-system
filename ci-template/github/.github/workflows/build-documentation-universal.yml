@@ -1,0 +1,122 @@
+name: 🎮 Build Godot Examples Documentation (Universal)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild all projects'
+        required: false
+        default: false
+        type: boolean
+      godot_version:
+        description: 'Godot version to use for building'
+        required: false
+        default: '4.5-beta1'
+        type: string
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: main-build-documentation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: ${{ github.event.inputs.godot_version || '4.5-beta1' }}
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build-and-deploy:
+    name: 🏗️ Build & Deploy with Universal Build System
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Setup Godot Environment
+        run: |
+          echo "🎮 Setting up Godot ${{ env.GODOT_VERSION }} environment..."
+          python godot-ci-build-system/build.py setup \
+            --godot-version ${{ env.GODOT_VERSION }} \
+            --verbose
+
+      - name: Verify Godot Environment
+        run: |
+          echo "🔍 Verifying Godot environment..."
+          python godot-ci-build-system/build.py verify \
+            --godot-version ${{ env.GODOT_VERSION }} \
+            --verbose
+
+      - name: Clean previous artifacts
+        run: |
+          echo "🧹 Cleaning previous build artifacts..."
+          python godot-ci-build-system/build.py clean \
+            --verbose
+
+      - name: Build projects and documentation
+        run: |
+          echo "🏗️ Building all projects and final documentation with embeds..."
+          python godot-ci-build-system/build.py final \
+            --godot-version ${{ env.GODOT_VERSION }} \
+            --jobs 4 \
+            --verbose \
+            ${{ github.event.inputs.force_rebuild == 'true' && '--force-rebuild' || '' }}
+
+      - name: Prepare deployment artifact
+        run: |
+          echo "📦 Preparing deployment artifact..."
+          python godot-ci-build-system/build.py artifact \
+            --artifact-output ./deployment \
+            --verbose
+
+      - name: Setup Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/configure-pages@v4
+
+      - name: Upload to GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./deployment
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "🎮 Universal Build System Summary"
+          echo "================================"
+          echo ""
+          echo "🎯 Godot Version: ${{ env.GODOT_VERSION }}"
+          echo "🔄 Force Rebuild: ${{ github.event.inputs.force_rebuild || 'false' }}"
+          echo "📊 Build Status: ${{ job.status }}"
+          echo ""
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Build completed successfully using the universal build system!"
+            echo "🚀 All CI/CD logic is now encapsulated in the build system."
+          else
+            echo "❌ Build failed!"
+          fi

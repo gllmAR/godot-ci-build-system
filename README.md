@@ -123,6 +123,51 @@ python godot-ci-build-system/build.py build --no-change-detection
 - `--verbose`: Enable verbose output
 - `--progress`: Show detailed progress
 
+## Configuration Wizard
+
+Before your first build, run the interactive configuration wizard to generate a `build_config.json` tailored to your project:
+
+```bash
+python godot-ci-build-system/configure_build.py
+```
+
+This wizard will:
+- Detect sensible defaults (project name, URL, directories, etc.)
+- Prompt you for any missing or project-specific information
+- Write a complete, type-safe `build_config.json` to your project root
+- Exit gracefully if cancelled (Ctrl+C/Ctrl+D)
+
+You can re-run the wizard at any time to update your configuration.
+
+### About `build_config.json`
+
+All project-specific settings are stored in `build_config.json` at the project root. This file is required for all builds and contains:
+- Project metadata (name, URL)
+- Directory structure (projects, docs, cache, etc.)
+- Build and deployment options
+- Logging and CI/CD preferences
+
+You can edit this file manually, but using the wizard is recommended for type safety and validation.
+
+## CI Workflow Generation
+
+After running the configuration wizard, generate a ready-to-use GitHub Actions workflow for your project:
+
+```bash
+python godot-ci-build-system/generate_ci.py
+```
+
+This will create (or update) `.github/workflows/build-documentation-universal.yml` using the recommended template for the universal build system. You can customize the workflow as needed for your project or CI provider.
+
+## Troubleshooting & FAQ
+
+- **Missing or invalid config:** If you see errors about missing configuration, run the wizard again.
+- **Godot not found:** Use the `setup` target to install the required Godot version.
+- **CI/CD issues:** Ensure your workflow initializes submodules and runs the configuration wizard if needed.
+- **Customizing builds:** Edit `build_config.json` or pass command-line overrides (see Command Reference).
+
+For more help, see the comments in `build_config.json` or open an issue in the repository.
+
 ## Architecture
 
 ### Modules
