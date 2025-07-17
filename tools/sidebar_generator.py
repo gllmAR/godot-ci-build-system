@@ -337,13 +337,14 @@ class SidebarGenerator:
         
         return content
     
-    def validate_links(self, content: str, base_dir: Path) -> List[str]:
+    def validate_links(self, content: str, base_dir: Path, sidebar_base_path: Optional[str] = None) -> List[str]:
         """
         Validate all markdown links in the generated content
         
         Args:
             content: Generated sidebar content
             base_dir: Base directory for resolving relative paths
+            sidebar_base_path: Optional base path to prepend for absolute links (e.g. 'godot-examples-docsh')
             
         Returns:
             List of broken link descriptions
@@ -361,8 +362,11 @@ class SidebarGenerator:
             
             # Handle absolute paths (Docsify style)
             if link_path.startswith('/'):
-                # For Docsify absolute paths, resolve relative to base_dir
-                actual_path = base_dir / link_path[1:]  # Remove leading slash
+                # For Docsify absolute paths, resolve relative to base_dir and sidebar_base_path
+                rel_path = link_path[1:]
+                if sidebar_base_path:
+                    rel_path = sidebar_base_path.rstrip('/') + '/' + rel_path
+                actual_path = base_dir / rel_path
             else:
                 # Relative paths
                 actual_path = base_dir / link_path
@@ -497,9 +501,18 @@ def generate_sidebar(projects_dir: Path, config: BuildSystemConfig,
     if validate:
         if verbose:
             print("🔗 Validating links...")
-        broken_links = generator.validate_links(content, projects_dir.parent)
+        # Determine sidebar base path for validation (e.g. deployment root)
+        # Dynamically set sidebar_base_path to the folder name of projects_dir
+        sidebar_base_path = projects_dir.name
+        broken_links = generator.validate_links(content, projects_dir.parent, sidebar_base_path=sidebar_base_path)
         if broken_links:
             generator.errors.extend([f"Broken link: {link}" for link in broken_links])
+
+        # Per-project README validation
+        for category_projects in generator.group_projects_by_category(generator.discover_projects_and_readmes(projects_dir)).values():
+            for project in category_projects:
+                if not project.has_readme:
+                    generator.errors.append(f"Missing README.md for project: {project.path}")
     
     # Show report if verbose
     if verbose:
