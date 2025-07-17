@@ -149,14 +149,13 @@ class ArtifactManager:
                                      projects_dir: Path,
                                      output_dir: Optional[Path] = None) -> Path:
         """Prepare documentation site artifact for deployment"""
-        
         self.progress.info("📦 Preparing documentation artifact...")
-        
+
         if output_dir is None:
             output_dir = root_dir / "artifact_staging"
-        
+
         output_dir.mkdir(exist_ok=True)
-        
+
         # Documentation files to include
         doc_files = [
             "index.html",
@@ -165,7 +164,7 @@ class ArtifactManager:
             "DOCS.md",
             "docsify-embed-godot.js"
         ]
-        
+
         # Copy documentation files
         copied_files = []
         for doc_file in doc_files:
@@ -175,62 +174,63 @@ class ArtifactManager:
                 shutil.copy2(src_path, dest_path)
                 copied_files.append(doc_file)
                 self.progress.info(f"  📄 Copied {doc_file}")
-        
-        # Copy projects directory with filters
-        dest_projects_dir = output_dir / projects_dir.name
-        if dest_projects_dir.exists():
-            shutil.rmtree(dest_projects_dir)
-        
-        self.progress.info(f"  📁 Copying projects directory...")
-        
-        # Define what to exclude
+
+        # Copy all top-level project directories (ending with '-projects' or '-extended')
+        self.progress.info(f"  📁 Copying all project directories...")
         exclude_patterns = {
             ".git", ".gitignore", ".gitmodules",
             ".import", "*.tmp", "*.log", 
             "build_cache.json", ".godot",
-            # Godot binaries and templates
             "godot", "godot.exe", "*.tpz", 
             "export_templates", ".local/share/godot",
             "Godot_v*", "*.dmg", "*.app"
         }
-        
+
         def ignore_patterns(dir_path, names):
             ignored = []
             for name in names:
-                # Skip hidden git files
                 if name.startswith('.git'):
                     ignored.append(name)
-                # Skip import and cache files
                 elif name in exclude_patterns:
                     ignored.append(name)
-                # Skip files matching patterns
                 elif any(name.endswith(pattern[1:]) for pattern in exclude_patterns if pattern.startswith('*')):
                     ignored.append(name)
-                # Skip Godot binaries (case-insensitive)
                 elif name.lower().startswith('godot') and (name.lower().endswith('.exe') or '.' not in name):
                     ignored.append(name)
-                # Skip export template files
                 elif name.endswith('.tpz') or 'template' in name.lower():
                     ignored.append(name)
             return ignored
-        
-        shutil.copytree(projects_dir, dest_projects_dir, ignore=ignore_patterns)
-        
+
+        # Find all top-level project dirs
+        for child in root_dir.iterdir():
+            if child.is_dir() and (child.name.endswith('-projects') or child.name.endswith('-extended')):
+                dest_dir = output_dir / child.name
+                if dest_dir.exists():
+                    shutil.rmtree(dest_dir)
+                shutil.copytree(child, dest_dir, ignore=ignore_patterns)
+                self.progress.info(f"    📁 Copied {child.name}")
+
         # Calculate artifact info
         total_size = sum(f.stat().st_size for f in output_dir.rglob("*") if f.is_file())
         total_files = len(list(output_dir.rglob("*")))
-        
-        # Verify artifact contents
-        verification = self.verify_build_results(dest_projects_dir)
-        
+
+        # Verify artifact contents (check all copied project dirs)
+        total_projects = 0
+        total_exports = 0
+        for child in output_dir.iterdir():
+            if child.is_dir() and (child.name.endswith('-projects') or child.name.endswith('-extended')):
+                verification = self.verify_build_results(child)
+                total_projects += verification['total_projects']
+                total_exports += verification['total_exports']
+
         self.progress.success(f"✅ Documentation artifact prepared:")
         self.progress.info(f"  📦 Location: {output_dir}")
         self.progress.info(f"  📄 Documentation files: {len(copied_files)}")
-        self.progress.info(f"  🎮 Projects: {verification['total_projects']}")
-        self.progress.info(f"  🌐 Web exports: {verification['total_exports']}")
+        self.progress.info(f"  🎮 Projects: {total_projects}")
+        self.progress.info(f"  🌐 Web exports: {total_exports}")
         self.progress.info(f"  📁 Total files: {total_files}")
         self.progress.info(f"  💾 Total size: {self._format_size(total_size)}")
-        
+
         return output_dir
     
     def create_deployment_summary(self, artifact_dir: Path) -> Dict[str, Any]:
