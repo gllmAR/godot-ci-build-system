@@ -93,7 +93,9 @@ class SidebarGenerator:
         projects = []
         
         # First, find all Godot projects
-        project_files = list(projects_dir.rglob("project.godot"))
+        exclude_dirs = {'.github', 'docs'}
+        project_files = [pf for pf in projects_dir.rglob("project.godot")
+                        if not any(ex in pf.parts for ex in exclude_dirs)]
         
         for project_file in project_files:
             project_dir = project_file.parent
@@ -136,7 +138,8 @@ class SidebarGenerator:
                 self.stats['projects_with_readme'] += 1
         
         # Second, find standalone README files in directories without project.godot
-        all_readme_files = list(projects_dir.rglob("README.md"))
+        all_readme_files = [rf for rf in projects_dir.rglob("README.md")
+                            if not any(ex in rf.parts for ex in exclude_dirs)]
         project_dirs = {p.path for p in projects}  # Set of directories that already have projects
         
         for readme_file in all_readme_files:
@@ -294,7 +297,7 @@ class SidebarGenerator:
         
         return tree
     
-    def render_hierarchy_markdown(self, tree: Dict, base_path: str, depth: int = 0) -> str:
+    def render_hierarchy_markdown(self, tree: Dict, base_path: str, depth: int = 0, skip_category_readme: Optional[str] = None) -> str:
         """
         Render hierarchy tree as markdown with proper Docsify indentation
         
@@ -302,6 +305,7 @@ class SidebarGenerator:
             tree: Nested tree structure
             base_path: Base path for links
             depth: Current nesting depth
+            skip_category_readme: If set, skip rendering this README link (used for category header)
             
         Returns:
             Rendered markdown content compatible with Docsify
@@ -314,17 +318,20 @@ class SidebarGenerator:
                 project = node['project_info']
                 
                 if project.has_readme:
-                    link_path = f"/{base_path}/{project.relative_path}/README.md"
-                    content += f"{indent}- [{project.display_title}]({link_path})\n"
+                    link_path = f"/{base_path}/{project.relative_path}/README.md".replace('/./', '/')
+                    # Skip category README if already rendered as header
+                    if skip_category_readme and link_path == skip_category_readme:
+                        pass
+                    else:
+                        content += f"{indent}- [{project.display_title}]({link_path})\n"
                 else:
-                    # Still show the project but with a warning
                     content += f"{indent}- {project.display_title} ⚠️ (No README)\n"
                     self.stats['broken_links'] += 1
             
             # Render children with increased depth (Docsify style)
             if node['children']:
                 child_content = self.render_hierarchy_markdown(
-                    node['children'], base_path, depth + 1
+                    node['children'], base_path, depth + 1, skip_category_readme=skip_category_readme
                 )
                 content += child_content
         
@@ -400,50 +407,42 @@ class SidebarGenerator:
         
         for category_name in sorted(categories.keys()):
             category_projects = categories[category_name]
-            
-            # Check if category has its own README
+            # Only add the category header once
             category_readme_path = projects_dir / category_name / "README.md"
             if category_readme_path.exists():
-                # Extract title from category README
                 category_title = self.extract_title_from_readme(category_readme_path)
                 if not category_title:
                     category_title = f"{category_name.upper()} Demos"
-                
-                # Make category a clickable link
-                category_link = f"/{self.config.structure.projects_dir}/{category_name}/README.md"
-                content += f"- [{category_title}]({category_link})\n\n"
+                category_link = f"/{str(self.config.structure.projects_dir)}/{category_name}/README.md".replace('/./', '/')
+                content += f"- [{category_title}]({category_link})\n"
             else:
-                # Fallback to plain text if no category README
-                content += f"- {category_name.upper()}\n\n"
-            
+                content += f"- {category_name.upper()}\n"
+            # Render hierarchy below the header
             if use_hierarchy:
-                # Build and render hierarchy (for complex nested structures)
                 tree = self.build_hierarchy_tree(category_projects)
+                base_path = str(self.config.structure.projects_dir) if self.config.structure.projects_dir else ""
+                # If category has README, skip it in hierarchy rendering
+                skip_link = None
+                if category_readme_path.exists():
+                    skip_link = f"/{base_path}/{category_name}/README.md".replace('/./', '/')
                 category_content = self.render_hierarchy_markdown(
-                    tree, self.config.structure.projects_dir, depth=1
+                    tree, base_path, depth=1, skip_category_readme=skip_link
                 )
             else:
-                # Simple flat structure (current format, but validated)
-                # Check if category has its own README to avoid duplication
-                category_readme_path = projects_dir / category_name / "README.md"
                 has_category_readme = category_readme_path.exists()
-                
                 for project in sorted(category_projects, key=lambda p: p.display_title.lower()):
-                    # Skip the category-level README if it's already used as category header
                     if (has_category_readme and 
                         len(project.relative_path.parts) == 1 and 
                         project.relative_path.parts[0] == category_name and
-                        not project.is_project):  # Only skip standalone READMEs, not Godot projects
+                        not project.is_project):
                         continue
-                        
                     if project.has_readme:
-                        link_path = f"/{self.config.structure.projects_dir}/{project.relative_path}/README.md"
+                        link_path = f"/{str(self.config.structure.projects_dir)}/{project.relative_path}/README.md".replace('/./', '/')
                         content += f"  - [{project.display_title}]({link_path})\n"
                     else:
                         content += f"  - {project.display_title} ⚠️ (No README)\n"
                         self.stats['broken_links'] += 1
                 category_content = ""
-            
             content += category_content
             content += "\n"
         
@@ -475,10 +474,10 @@ def generate_sidebar(projects_dir: Path, config: BuildSystemConfig,
                             validate: bool = True, verbose: bool = False,
                             use_hierarchy: bool = False) -> Tuple[str, List[str]]:
     """
-    Generate improved sidebar with validation and error reporting
+                actual_path = base_dir / Path(link_path[1:])  # Remove leading slash, ensure Path
     
     Args:
-        projects_dir: Directory containing Godot projects
+                actual_path = base_dir / Path(link_path)
         config: Build system configuration
         validate: Whether to validate generated links
         verbose: Whether to show detailed progress
@@ -542,7 +541,9 @@ if __name__ == "__main__":
     if args.projects_dir:
         projects_dir = Path(args.projects_dir)
     else:
-        projects_dir = Path(args.config).parent / config.structure.projects_dir
+        # Ensure config.structure.projects_dir is a str and not None
+        projects_dir_name = str(config.structure.projects_dir) if config.structure.projects_dir else ""
+        projects_dir = Path(args.config).parent / projects_dir_name
     
     # Generate sidebar
     content, errors = generate_sidebar(
