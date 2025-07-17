@@ -447,7 +447,6 @@ class SidebarGenerator:
             content += "\n"
         
         return content
-    
     def generate_report(self) -> str:
         """Generate a status report of the sidebar generation"""
         report = []

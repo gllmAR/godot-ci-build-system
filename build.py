@@ -512,7 +512,7 @@ def main():
                     generate_sidebar = _lazy_import('sidebar_generator')
                     projects_dir = project_root / (config.structure.projects_dir or ".")
                     sidebar_content, errors = generate_sidebar(
-                        projects_dir, config, validate=True, verbose=args.verbose
+                        projects_dir, config, validate=True, verbose=args.verbose, use_hierarchy=True
                     )
                     
                     if errors:
