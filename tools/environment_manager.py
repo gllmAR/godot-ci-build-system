@@ -161,14 +161,21 @@ class GodotEnvironmentManager:
     
     def _get_template_version_format(self, version: str) -> str:
         """Convert version string to template directory format"""
-        if "beta" in version:
+        # Map version string to the template folder name Godot expects.
+        # Pre-releases keep their dot-prefixed suffix (e.g. 4.5-beta -> 4.5.beta)
+        # Stable releases should include the `.stable` suffix used by Godot
+        # (e.g. 4.4.1 -> 4.4.1.stable).
+        if "-beta" in version:
             return version.replace("-beta", ".beta")
-        elif "alpha" in version:
+        elif "-alpha" in version:
             return version.replace("-alpha", ".alpha")
-        elif "rc" in version:
+        elif "-rc" in version:
             return version.replace("-rc", ".rc")
         else:
-            return version
+            # Append `.stable` for stable releases to match expected template dir
+            if version.endswith(".stable"):
+                return version
+            return f"{version}.stable"
     
     def download_file(self, url: str, destination: Path, description: str = "file", retries: int = 3) -> bool:
         """Download a file with progress reporting and retry logic"""
