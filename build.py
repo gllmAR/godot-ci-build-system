@@ -504,27 +504,35 @@ def main():
             # Generate documentation and sidebar
             if args.target in ['docs', 'all', 'final']:
                 progress.info("📚 Generating documentation and sidebar...")
-                
-                if args.dry_run:
-                    progress.info("🔍 Would generate sidebar and documentation")
+
+                # Allow overall documentation generation to be disabled via config
+                if hasattr(config, 'enable_documentation_generation') and config.enable_documentation_generation is False:
+                    progress.info("ℹ️ Documentation generation is disabled by configuration; skipping docs and sidebar.")
                 else:
-                    # Use the sidebar generator tool
-                    generate_sidebar = _lazy_import('sidebar_generator')
-                    projects_dir = project_root / (config.structure.projects_dir or ".")
-                    sidebar_content, errors = generate_sidebar(
-                        projects_dir, config, validate=True, verbose=args.verbose, use_hierarchy=True
-                    )
-                    
-                    if errors:
-                        progress.warning(f"⚠️ Sidebar generated with {len(errors)} warnings:")
-                        for error in errors[:3]:  # Show first 3 errors
-                            progress.warning(f"   - {error}")
-                        if len(errors) > 3:
-                            progress.warning(f"   ... and {len(errors) - 3} more")
-                    
-                    sidebar_output = project_root / "_sidebar.md"
-                    sidebar_output.write_text(sidebar_content)
-                    progress.success(f"✅ Documentation sidebar generated: {sidebar_output}")
+                    if args.dry_run:
+                        progress.info("🔍 Would generate sidebar and documentation")
+                    else:
+                        # Sidebar generation can be disabled independently in config
+                        if hasattr(config, 'enable_sidebar_generation') and config.enable_sidebar_generation is False:
+                            progress.info("ℹ️ Sidebar generation disabled in configuration; skipping sidebar generation.")
+                        else:
+                            # Use the sidebar generator tool
+                            generate_sidebar = _lazy_import('sidebar_generator')
+                            projects_dir = project_root / (config.structure.projects_dir or ".")
+                            sidebar_content, errors = generate_sidebar(
+                                projects_dir, config, validate=True, verbose=args.verbose, use_hierarchy=True
+                            )
+
+                            if errors:
+                                progress.warning(f"⚠️ Sidebar generated with {len(errors)} warnings:")
+                                for error in errors[:3]:  # Show first 3 errors
+                                    progress.warning(f"   - {error}")
+                                if len(errors) > 3:
+                                    progress.warning(f"   ... and {len(errors) - 3} more")
+
+                            sidebar_output = project_root / "_sidebar.md"
+                            sidebar_output.write_text(sidebar_content)
+                            progress.success(f"✅ Documentation sidebar generated: {sidebar_output}")
             
             # Inject embeds for final/production builds
             if args.target in ['final', 'all']:
